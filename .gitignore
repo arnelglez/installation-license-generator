@@ -7,3 +7,8 @@ __pycache__/
 venv/
 .DS_Store
 *.license
+build/
+dist/
+*.spec.bak
+license_generator/bundled_secrets.env
+assets/vlaxsoft.iconset/
