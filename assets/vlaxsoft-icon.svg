@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="160" y1="120" x2="864" y2="904" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1F3A"/>
+      <stop offset="1" stop-color="#12345F"/>
+    </linearGradient>
+    <linearGradient id="markBlue" x1="300" y1="700" x2="560" y2="300" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1F3A"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="markTeal" x1="520" y1="620" x2="760" y2="260" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="220" y1="180" x2="520" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="196" fill="url(#bg)"/>
+  <ellipse cx="360" cy="260" rx="260" ry="180" fill="url(#shine)"/>
+
+  <g transform="translate(512 500)">
+    <!-- Left hex nut -->
+    <path
+      d="M-196 34 L-196 -34 L-147 -68 L-49 -68 L0 -34 L0 34 L-49 68 L-147 68 Z"
+      fill="url(#markBlue)"
+    />
+    <circle cx="-98" cy="0" r="34" fill="#081629"/>
+
+    <!-- Bottom-right hex nut -->
+    <path
+      d="M-34 162 L-34 96 L15 62 L113 62 L162 96 L162 162 L113 196 L15 196 Z"
+      fill="url(#markBlue)"
+    />
+    <circle cx="64" cy="129" r="30" fill="#081629"/>
+
+    <!-- Arrow / upper hex -->
+    <path
+      d="M34 96 L34 30 L83 -4 L181 -4 L230 30 L318 -118 L402 -52 L250 196 L152 196 L103 162 L103 96 L152 62 L250 62 Z"
+      fill="url(#markTeal)"
+    />
+    <circle cx="167" cy="96" r="28" fill="#0B1F3A" fill-opacity="0.35"/>
+  </g>
+</svg>
