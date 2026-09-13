@@ -35,7 +35,7 @@ from license_generator.apps import (
     load_secret_for_app,
     secrets_are_bundled,
 )
-from license_generator.crypto import generate_license, parse_request_code
+from license_generator.crypto import generate_license, parse_request_code, resolve_request_code
 from license_generator.styles import APP_STYLESHEET
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
@@ -154,6 +154,7 @@ class LicenseGeneratorWindow(QMainWindow):
         self.request_code_input = QTextEdit()
         self.request_code_input.setObjectName("requestInput")
         self.request_code_input.setFixedHeight(96)
+        self.request_code_input.textChanged.connect(self.on_request_code_changed)
         form.addRow(self._field_label("Código solicitud"), self.request_code_input)
 
         form_outer.addLayout(form)
@@ -241,16 +242,15 @@ class LicenseGeneratorWindow(QMainWindow):
         config = self.current_config()
         if self.bundled_secrets:
             self.intro.setText(
-                f"Selecciona {config.label}, elige vigencia mensual o anual, pega el código de "
-                f"solicitud ({config.prefix}…) y genera la licencia."
+                f"Pega un código de solicitud VX2 (incluye app, referencia al secreto e "
+                f"instalación), elige vigencia y genera la licencia {config.prefix}."
             )
         else:
             self.intro.setText(
-                f"Selecciona {config.label}, elige vigencia mensual o anual, pega el código de "
-                f"solicitud ({config.prefix}…) y genera la licencia. El secreto debe coincidir con "
-                f"INSTALLATION_LICENSE_SECRET del servidor {config.label}."
+                f"Pega un código VX2 o legacy ({config.prefix}…), elige vigencia y genera "
+                f"la licencia. Los códigos VX2 identifican la app y el secreto automáticamente."
             )
-        self.request_code_input.setPlaceholderText(f"{config.prefix}…")
+        self.request_code_input.setPlaceholderText("VX2.vendix.… o VX1.…")
         self.output.clear()
         self.set_status("")
 
@@ -260,46 +260,61 @@ class LicenseGeneratorWindow(QMainWindow):
         elif not self.bundled_secrets:
             self.secret_input.clear()
 
+    def on_request_code_changed(self):
+        request_code = self.request_code_input.toPlainText().strip()
+        resolved = resolve_request_code(request_code)
+        if not resolved:
+            return
+        config, _secret, _installation_id = resolved
+        index = self.app_combo.findData(config.app_id)
+        if index >= 0:
+            self.app_combo.setCurrentIndex(index)
+
     def current_secret(self) -> str:
         if self.bundled_secrets:
             return load_secret_for_app(self.current_app())
         return self.secret_input.text().strip()
 
     def generate_license(self):
-        config = self.current_config()
-        secret = self.current_secret()
         request_code = self.request_code_input.toPlainText().strip()
         period = self.period_combo.currentData()
 
-        if not secret:
-            self.set_status("El secreto es obligatorio.", error=True)
-            QMessageBox.warning(self, "Validación", "El secreto es obligatorio.")
-            return
         if not request_code:
             self.set_status("El código de solicitud es obligatorio.", error=True)
             QMessageBox.warning(self, "Validación", "El código de solicitud es obligatorio.")
             return
-        if not request_code.startswith(config.prefix):
-            self.set_status(
-                f"El código debe empezar por {config.prefix}.",
-                error=True,
-            )
-            QMessageBox.warning(
-                self,
-                "Validación",
-                f"El código debe empezar por {config.prefix} (licencia {config.label}).",
-            )
-            return
 
-        installation_id = parse_request_code(config, secret, request_code)
-        if not installation_id:
-            self.set_status("Código inválido o secreto incorrecto.", error=True)
-            QMessageBox.critical(
-                self,
-                "Código inválido",
-                "El código de solicitud no es válido o no coincide con el secreto.",
-            )
-            return
+        resolved = resolve_request_code(request_code)
+        if resolved:
+            config, secret, installation_id = resolved
+        else:
+            config = self.current_config()
+            secret = self.current_secret()
+            if not secret:
+                self.set_status("El secreto es obligatorio.", error=True)
+                QMessageBox.warning(self, "Validación", "El secreto es obligatorio.")
+                return
+            if not request_code.startswith(config.prefix):
+                self.set_status(
+                    f"El código legacy debe empezar por {config.prefix}.",
+                    error=True,
+                )
+                QMessageBox.warning(
+                    self,
+                    "Validación",
+                    f"El código legacy debe empezar por {config.prefix} "
+                    f"(licencia {config.label}). Use VX2 para auto-detectar la app.",
+                )
+                return
+            installation_id = parse_request_code(config, secret, request_code)
+            if not installation_id:
+                self.set_status("Código inválido o secreto incorrecto.", error=True)
+                QMessageBox.critical(
+                    self,
+                    "Código inválido",
+                    "El código de solicitud no es válido o no coincide con el secreto.",
+                )
+                return
 
         license_key = generate_license(config, secret, installation_id, period)
         self.output.setPlainText(license_key)
