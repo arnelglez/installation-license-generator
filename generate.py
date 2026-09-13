@@ -7,7 +7,7 @@ import argparse
 import sys
 
 from license_generator.apps import APP_BIZ_CONTROL, APP_CONFIGS, APP_VENDIX
-from license_generator.crypto import generate_license, parse_request_code
+from license_generator.crypto import generate_license, parse_request_code, resolve_request_code
 
 
 def main() -> int:
@@ -17,10 +17,12 @@ def main() -> int:
     parser.add_argument(
         "--app",
         choices=(APP_VENDIX, APP_BIZ_CONTROL),
-        required=True,
-        help="Target application",
+        help="Target application (optional for VX2 request codes)",
     )
-    parser.add_argument("--secret", required=True, help="INSTALLATION_LICENSE_SECRET")
+    parser.add_argument(
+        "--secret",
+        help="INSTALLATION_LICENSE_SECRET (optional for VX2 request codes)",
+    )
     parser.add_argument("--request", required=True, help="Request code from the installation")
     parser.add_argument(
         "--period",
@@ -30,21 +32,32 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    config = APP_CONFIGS[args.app]
     request_code = args.request.strip()
-    if not request_code.startswith(config.prefix):
-        print(
-            f"Request code must start with {config.prefix} ({config.label}).",
-            file=sys.stderr,
-        )
-        return 1
+    resolved = resolve_request_code(request_code)
+    if resolved:
+        config, secret, installation_id = resolved
+    else:
+        if not args.app or not args.secret:
+            print(
+                "Legacy request codes require --app and --secret. "
+                "Use a VX2 request code to resolve them automatically.",
+                file=sys.stderr,
+            )
+            return 1
+        config = APP_CONFIGS[args.app]
+        secret = args.secret
+        if not request_code.startswith(config.prefix):
+            print(
+                f"Request code must start with {config.prefix} ({config.label}).",
+                file=sys.stderr,
+            )
+            return 1
+        installation_id = parse_request_code(config, secret, request_code)
+        if not installation_id:
+            print("Invalid request code or secret mismatch.", file=sys.stderr)
+            return 1
 
-    installation_id = parse_request_code(config, args.secret, request_code)
-    if not installation_id:
-        print("Invalid request code or secret mismatch.", file=sys.stderr)
-        return 1
-
-    print(generate_license(config, args.secret, installation_id, args.period))
+    print(generate_license(config, secret, installation_id, args.period))
     return 0
 
 

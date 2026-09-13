@@ -6,11 +6,21 @@ import base64
 import hashlib
 import hmac
 import json
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from cryptography.fernet import Fernet
 
-from license_generator.apps import AppConfig, LicensePeriod
+from license_generator.apps import APP_CONFIGS, AppConfig, LicensePeriod, load_secret_for_app
+
+REQUEST_PREFIX = "VX2."
+
+
+@dataclass(frozen=True)
+class ParsedRequestCode:
+    app_id: str
+    key_id: str
+    installation_id: str
 
 
 def _fernet_key(secret: str) -> bytes:
@@ -37,7 +47,15 @@ def _sign_payload(secret: str, payload_json: str) -> str:
     ).hexdigest()
 
 
-def parse_request_code(config: AppConfig, secret: str, request_code: str) -> str | None:
+def secret_key_id(secret: str) -> str:
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:16]
+
+
+def _request_sign_message(app_id: str, key_id: str, installation_id: str) -> str:
+    return f"v2|{app_id}|{key_id}|{installation_id}"
+
+
+def _parse_request_code_v1(config: AppConfig, secret: str, request_code: str) -> str | None:
     code = request_code.strip()
     if not code.startswith(config.prefix):
         return None
@@ -51,6 +69,74 @@ def parse_request_code(config: AppConfig, secret: str, request_code: str) -> str
     if not hmac.compare_digest(signature, expected):
         return None
     return installation_id
+
+
+def _parse_request_code_v2(
+    secret: str,
+    request_code: str,
+    *,
+    expected_app_id: str | None = None,
+) -> str | None:
+    code = request_code.strip()
+    if not code.startswith(REQUEST_PREFIX):
+        return None
+
+    body = code[len(REQUEST_PREFIX) :]
+    parts = body.split(".")
+    if len(parts) != 4:
+        return None
+
+    app_id, key_id, installation_id, signature = parts
+    if expected_app_id and app_id != expected_app_id:
+        return None
+    if secret_key_id(secret) != key_id:
+        return None
+
+    message = _request_sign_message(app_id, key_id, installation_id)
+    expected = _sign_payload(secret, message)
+    if not hmac.compare_digest(signature, expected):
+        return None
+    return installation_id
+
+
+def resolve_request_code(request_code: str) -> tuple[AppConfig, str, str] | None:
+    code = request_code.strip()
+    if not code.startswith(REQUEST_PREFIX):
+        return None
+
+    body = code[len(REQUEST_PREFIX) :]
+    parts = body.split(".")
+    if len(parts) != 4:
+        return None
+
+    app_id, key_id, installation_id, _signature = parts
+    config = APP_CONFIGS.get(app_id)
+    if not config:
+        return None
+
+    secret = load_secret_for_app(app_id)
+    if not secret or secret_key_id(secret) != key_id:
+        return None
+
+    verified = _parse_request_code_v2(secret, code)
+    if verified != installation_id:
+        return None
+    return config, secret, installation_id
+
+
+def parse_request_code(config: AppConfig, secret: str, request_code: str) -> str | None:
+    code = request_code.strip()
+    if code.startswith(REQUEST_PREFIX):
+        resolved = resolve_request_code(code)
+        if not resolved:
+            return None
+        resolved_config, resolved_secret, installation_id = resolved
+        if resolved_config.app_id != config.app_id:
+            return None
+        if resolved_secret != secret:
+            return None
+        return installation_id
+    return _parse_request_code_v1(config, secret, request_code)
 
 
 def generate_license(
